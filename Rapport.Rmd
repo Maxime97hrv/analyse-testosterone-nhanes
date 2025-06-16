@@ -1,0 +1,628 @@
+---
+title: "Analyse des déterminants de la testostérone"
+author: "Maxime HERVE"
+date: "2025-05-26"
+output: html_document
+---
+### Introduction: 
+
+La testostérone est une hormone clé du système endocrinien masculin, jouant un rôle central dans la régulation de la masse musculaire, de la densité osseuse, de la libido, ainsi que dans diverses fonctions métaboliques (*Matsumoto, 2013*). Le déclin progressif des taux de testostérone avec l’âge est bien documenté et associé à plusieurs comorbidités, notamment l’obésité, les troubles métaboliques et cardiovasculaires (*Kaufman & Vermeulen, 2005*).
+
+Dans cette étude, nous avons sélectionné un ensemble de variables physiologiques et liées au mode de vie pour mieux comprendre leurs liens avec la testostérone totale. Parmi celles-ci, l’âge et les mesures anthropométriques telles que le tour de taille sont intégrées en raison de leur forte corrélation avec la masse grasse viscérale, un facteur reconnu d’altération hormonale (*Grossmann et al., 2013*). Par ailleurs, la protéine liant les hormones sexuelles (SHBG: sex hormone-binding globulin) est incluse, car elle influence la biodisponibilité de la testostérone et son activité biologique (*Rosner et al., 2007*).
+
+Des paramètres biochimiques comme le cholestérol HDL et l’albumine sont également pris en compte, en raison de leur rôle dans le transport hormonal et leur potentiel impact sur l’état métabolique général (*Feldman et al., 2002*). Cette approche multifactorielle permet d’explorer les déterminants majeurs de la testostérone tout en tenant compte des interactions complexes entre facteurs biologiques et environnementaux.
+
+
+### Les variables:
+```{r, echo = FALSE, warning=FALSE, message = FALSE}
+library(sandwich)
+library(lmtest)
+library(broom)
+library(gtsummary)
+library(dplyr)
+library(ResourceSelection)
+library(pROC)
+
+invisible(capture.output(suppressWarnings(suppressMessages(source("Etude_testosterone.R"))), type = "output"))
+
+# 📊 STATISTIQUES DESCRIPTIVES
+
+#----------Moyenne et médiane sur toutes les variables:----------
+
+knitr::kable(summary_stats, digits = 2, caption = "Résultats:") %>%
+  kableExtra::kable_styling(full_width = FALSE)
+cat("Nombre d'observations :", nrow(vars_num), "\n", "Nombre de varaibles :", ncol(vars_num), "\n")
+
+```
+**Description de l'échantillon:**
+
+L’échantillon est composé de 20 colonnes numériques mesurées sur 2623 individus issus du cycle NANHES de 2013 à 2016 inclus, couvrant des domaines variés : âge, activité physique, alimentation, sommeil, composition corporelle, bilans biologiques, et notre variable principale la testostérone.
+L’âge moyen est de 43,6 ans, avec un IMC moyen de 28,7 kg/m², indiquant une tendance au surpoids. Le taux moyen de testostérone est de 420,8 ng/dL (écart-type : 158,4), avec des valeurs comprises entre 107 et 1050 ng/dL.
+Le cholestérol HDL varie entre 22 et 99 mg/dL, pour une moyenne de 47,7 mg/dL.
+On observe une large variabilité interindividuelle sur plusieurs variables, notamment la consommation d’alcool, la cotinine (nicotine), ou encore la durée d’activité assise.
+
+
+
+### Tests de Shapiro-Wilk, de normalité de l’âge et du taux de testostérone:
+```{r, echo = FALSE, warning=FALSE, message = FALSE}
+#----------Croisement âge / testostérone----------
+
+# Tests de normalité de la répartition de l'age et du taux de testostérone
+shapiro.test(dataset_final$RIDAGEYR)
+shapiro.test(dataset_final$LBXTST)
+```
+**Hypothèses:**
+
+- **H0** : (hypothèse nulle) : La variable suit une distribution normale.(non rejeté si p>0.05).
+- **H1** : (hypothèse alternative) : La variable ne suit pas une distribution normale.
+
+Les tests de normalité de Shapiro-Wilk appliqués aux variables âge `RIDAGEYR` et taux de testostérone `LBXTST` indiquent tous deux des résultats significatifs avec des *p-values* très inférieures au seuil de 0,05 (p < 2.2e-16).  
+Cela signifie que la distribution de ces deux variables s’écarte fortement d’une distribution normale.  
+
+> *Note : ce résultat justifie l’utilisation de méthodes statistiques non paramétriques, comme le test de corrélation de Spearman, pour analyser la relation entre âge et testostérone.*
+
+
+
+
+### Graphique du taux de testostérone moyen selon l'age:
+```{r, echo = FALSE, warning=FALSE, message = FALSE}
+# Graphique moyenne testostérone en fonction de l'âge avec moyenne mobile
+ggplot(mean_testo_age, aes(x = RIDAGEYR)) +
+  geom_line(aes(y = moyenne_testo), color = "blue", size = 1) + #Trace une courbe bleue représentant le taux moyen de testostérone selon l’âge.
+  geom_point(aes(y = moyenne_testo), color = "darkblue") + #Ajoute des points foncés (bleu foncé) sur chaque observation de la courbe bleue
+  geom_line(aes(y = moyenne_mobile), color = "green", size = 1, linetype = "solid") + #Ajoute une courbe verte représentant la moyenne mobile du taux de testostérone
+  labs(
+    x = "Âge (années)",
+    y = "Taux moyen de testostérone (ng/dL)",
+    title = "Évolution moyenne de la testostérone selon l'âge",
+    subtitle = "Ligne verte : moyenne mobile (k=3)"
+  ) +
+  theme_minimal()
+```
+**Interprétations:**
+
+La testostérone moyenne suit une tendance globale à la baisse avec l’âge en passant d'un pic moyen de 510 ng/dL à l'age de 21 ans à moins de 400 ng/dL à l'age de 70 ans. Mais cette diminution **n’est pas linéaire**.  
+On observe des **phases de stabilisation ou de réhausse ponctuelle** notamment à la fin de la trentaine, qui peuvent être influencées par des facteurs comportementaux ou contextuels: comme un meilleur contrôle du mode de vie à cet âge : stabilisation familiale, meilleures habitudes (sommeil, alimentation, activité physique).
+
+
+### Test de corrélation entre âge et testostérone (Spearman):
+```{r, echo = FALSE, warning=FALSE, message = FALSE}
+
+# Test de corrélaton de Spearman:
+cor.test(dataset_final$RIDAGEYR, dataset_final$LBXTST, method = "spearman")
+```
+
+Le test de Spearman est un test non paramétrique utilisé pour mesurer la force et la direction d’une association monotone entre deux variables numériques continues ou ordinales. Pas besoin de normalité sur les deux variables.
+
+**Hypothèses**:
+
+- **H0** : Il n’y a aucune corrélation monotone entre les deux variables (le coefficient de Spearman est nul, ρ = 0).
+- **H1** : Il existe une corrélation monotone significative entre les deux variables (ρ ≠ 0).
+
+Le coefficient de corrélation de Spearman entre l’âge et le taux de testostérone est de **-0,135** et **p < 0,001**, indiquant une **faible association négative statistiquement significative**.  
+Cela suggère que le taux de testostérone tend à diminuer légèrement avec l’âge.  
+
+> *Note : la présence de valeurs identiques dans les données empêche le calcul exact de la p-value, mais le résultat reste fiable.*
+
+
+### Analyse du graphique entre la testostérone en fonction du HDL:
+```{r, echo = FALSE, warning = FALSE, message = FALSE}
+#------------- Croisemment cholesterol HDL / Testostérone -------------
+
+ggplot(dataset_final, aes(x = LBDHDD, y = LBXTST)) +
+  stat_density2d(aes(fill = ..level..), geom = "polygon") + #Ajoute une estimation de densité bidimensionnelle
+  scale_fill_viridis_c() + geom_smooth(method = "lm", se = FALSE) + # Applique une palette de couleurs viridis et Superpose une droite de régression linéaire
+  labs(x = labels["LBDHDD"], 
+       y = labels["LBXTST"],
+       title = paste("Taux de", labels["LBXTST"], "en fonction du", labels["LBDHDD"]))
+```
+
+- Les couleurs représentent la **densité bivariés** de taux de cholesterol HDL et de testostérone. Plus la couleur est intense proche du jaune, plus il y a d'observations dans cette zone du graphique.
+- La ligne bleue représente la **droite de régression linéaire ajustée**.
+
+**Tendance observée :**
+
+Une relation positive se dégage: plus le taux de bon cholesterol augmente, plus les bornes supérieures et inférieures des taux de testostérone ont tendance à augmenter.
+Cette relation semble globalement linéaire bien que la dispersion soit importante: les bornes de densité montrent une **forte variabilité intra groupe**.
+
+**Bon à savoir:**
+Le taux de cholesterol HDL (lipoprotéines de haute densité), souvent appelé "bon cholesterol", est mesure en mg/dL dans le sang. Les fourchettes généralement reconnues pour les adultes sont: entre 40 mg/dL et 60 mg/dL.
+Un taux de HDL supérieur ou égal à 60 mg/dL est considéré comme protecteur contre les maladies cardiovasculaires (il faut éviter de dépasser les +100mg/dL), tandis qu'un taux inférieur à ces seuils est associé à un risque accru.
+
+***Interprétations du graphique :***
+Le pic de densite de du taux de cholesterol se situe entre 37 et 47 mg/dL environ, ce qui est trop peu. La population générale d'hommes américains semble être en déficite de bon cholesterol.
+La **tendance linéaire croissante** entre le cholestérol HDL et la testostérone peut s’expliquer par le rôle du cholestérol dans la **synthèse hormonale**. De plus, un taux élevé de HDL reflète souvent un bon état métabolique, favorable à la production de l'hormone stéroïdienne*: Étude de Freedman et al. (1991), Étude de Stanworth et al. (2007).*
+Cependant, un test de Spearman nous permettra de confirmer une éventuelle relation de corrélation entre ces deux variables.
+
+
+### Interprétation du test de corrélation de Spearman sur HDL:
+```{r, echo = FALSE, warning=FALSE, message = FALSE}
+# Calcul de la corrélation de Spearman
+cor.test(dataset_final$LBDHDD, dataset_final$LBXTST, method = "spearman")
+```
+
+- Le coefficient de corrélation de Spearman est **ρ = 0.31**, ce qui indique une **corrélation positive modérée** : quand le taux de HDL augmente, le taux de testostérone à tendance à augmenter.
+
+- La p-value est faible : **p = 2.2e-16**, bien inférieure à un seuil classique (par exemple 0.05), ce qui signifie que cette corrélation positive est **statistiquement très significative**.
+
+- On rejette l'hypothèse nulle et on conclut à **une association monotone positive forte**: plus le taux de HDL est élevé, plus le taux de testostérone a tendance à être haut. Cette association est robuste et peu probable d’être due au hasard dans les données.
+
+
+### Interprétation du test de corrélation de Spearman sur la vitamine D:
+```{r, echo = FALSE, warning=FALSE, message = FALSE}
+#---------------------Vit D / Testostérone -------------------------------------
+cor.test(dataset_final$LBXVIDMS, dataset_final$LBXTST, method = "spearman")
+```
+
+Le coefficient de corrélation de Spearman est **ρ = 0.032**, ce qui indique une corrélation positive très légère voire quasi nulle entre le taux de vitamine D dans le sang et le taux de testostérone.
+
+La p-value est élevée : **p = 0.1046**, bien supérieur à un seuil classique (par exemple 0.05), ce qui signifie que la corrélation n'est pas statistiquement significative.
+
+On accepte l'hypothèse nulle et on conclut qu'il n'y a **aucune association entre le taux de testostérone et la vitamine D**.
+D’un point de vue physiologique, certaines études (1) ont suggéré que la vitamine D pourrait influencer la production de testostérone via l’expression du récepteur de la vitamine D dans les cellules de Leydig (impliquées dans la synthèse des androgènes). Cependant, nos résultats ne corroborent pas cette hypothèse, du moins dans la population étudiée ici. Il est possible que d'autres facteurs confondants (âge, adiposité, statut inflammatoire...) masquent une relation sous-jacente.
+
+(1): *: Association Between Vitamin D Deficiency and Testosterone Levels in Adult Males: A Systematic Review (Alexander Muacevic, John R Adler)*
+
+
+### Analyse du graphique entre la testostérone et le tour de taille:
+```{r, echo = FALSE, warning=FALSE, message = FALSE}
+#------------ Tour de taille (cm) / testostérone ----------
+
+ggplot(dataset_final, aes(x = BMXWAIST, y = LBXTST)) + geom_point(shape = 21, color = "black", fill = "white",
+                                                                  size = 2, stroke = 0.7) + geom_smooth(method = "lm", color="green") + labs( # créer un nuage de points et courbe de régression MLS (liéaire simple)
+  x = labels["BMXWAIST"],
+  y = labels["LBXTST"],
+  title = paste(labels["LBXTST"], "en fonction du", labels["BMXWAIST"])
+)
+
+```
+
+Chaque point représente un individu, avec son **tour de taille (cm)** en abscisse et son **taux de testostérone (ng/dL)** en ordonnée.
+La **ligne verte** représente la **droite de régression linéaire** ajustée.
+
+**Tendance observée :**
+
+Une **relation négative claire** se dégage : plus le tour de taille est élevé, plus le taux de testostérone tend à diminuer.
+Cette relation est **globalement linéaire**, bien que la dispersion soit importante.
+Le nuage de points montre une **forte variabilité intra groupe**, mais la pente descendante de la droite indique une tendance générale cohérente.
+
+**Interprétation :**
+
+Le graphique met en évidence une **corrélation négative entre le tour de taille et la testostérone**.  
+Autrement dit, les hommes ayant un **tour de taille plus élevé** tendent à avoir une **testostérone plus faible**.  
+Ce résultat est cohérent avec la littérature scientifique, qui associe souvent **l’adiposité abdominale** à une diminution du taux de testostérone. En effet, la graisse abdominale transformerais la testostérone en oestrogène (hormone féminine) par le processus de l'aromatase d'après cette étude:
+*Dhindsa et al., 2018 "Obesity is associated with hypogonadism and reduced testosterone in men".*
+Une **analyse de régression** incluant d'autres variables, permettrait de quantifier plus précisément la **force de cette relation** (valeur du coefficient de corrélation, p-value, R²...).
+
+
+### Test de corrélation de Spearman entre le tour de taille et le taux de testostérone:
+```{r, echo = FALSE, warning = FALSE, message = FALSE}
+# Calcul de la corrélation de Spearman entre HDL et testostérone
+cat("Corrélation de Spearman rho =", round(cor_test$estimate, 3), "\n", "p-value =", signif(cor_test$p.value, 3), "\n")
+```
+
+Le coefficient de corrélation de Spearman est ρ = -0.428, ce qui indique une corrélation négative modérée : quand le tour de taille augmente, le taux de testostérone a tendance à diminuer.
+
+La p-value est extrêmement faible (p = 1.8e-117), bien inférieure à un seuil classique (par exemple 0.05), ce qui signifie que cette corrélation négative est statistiquement très significative.
+
+On rejette l'hypothèse nulle et on conclut à une association monotone négative forte: 
+Plus le tour de taille est élevé, plus le taux de testostérone a tendance à être bas. Cette association est robuste et peu probable d’être due au hasard dans les données.
+
+
+### Analyse du graphique de boïte à moustache du temps de sommeil sur la testostérone:
+```{r, echo = FALSE, warning=FALSE, message = FALSE}
+#------------ Croisement temps de sommeil / testostérone ----------
+
+ggplot(testo_sommeil, aes(x = sleep_group, y = LBXTST)) +
+  geom_boxplot(fill = "lightblue") + #création d'un graphique de boîte à moustaches
+  labs(x = "Temps de sommeil (heures)", y = "Testostérone (ng/dL)",
+       title = "Testostérone selon groupes de sommeil")
+```
+
+Il semble exister une **légère association positive** entre la durée du sommeil et les niveaux moyens de testostérone, avec la **médiane de testostérone** (barre noire) qui semble légèrement **augmenter avec le temps de sommeil**, notamment entre les groupes <5h et >8h.  
+Cependant, cette relation reste **peu marquée visuellement**, et la **présence de nombreux outliers** suggère une forte hétérogénéité individuelle, et l’**amplitude des boîtes** est relativement similaire, ce qui indique une dispersion comparable des valeurs dans chaque groupe.  
+Une **analyse statistique complémentaire (ANOVA)** est nécessaire pour conclure à une éventuelle corrélation.
+
+
+### Interprétation du test ANOVA: corrélation entre testostérone et groupe de sommeil:
+```{r, echo = FALSE, warning = FALSE, message = FALSE}
+# test ANOVA corrélation sommeil et testo
+anova_result <- aov(LBXTST ~ sleep_group, data = testo_sommeil)
+summary(anova_result)
+
+```
+
+**Hypothèses :**
+
+- **H0** : Les moyennes de la testostérone sont égales dans tous les groupes de sommeil (p>0.05).
+- **H1** : Au moins un groupe a une moyenne différente.
+
+**Résultats :**
+
+- La statistique F est **1.118**, ce qui n’est pas très élevé.
+- La *p-value* est **0.346**, donc bien supérieure au seuil classique de 0.05.
+
+**Conclusion :**
+
+- On ne rejette pas l’hypothèse nulle (**H0**).  
+- Autrement dit, il n’y a pas de différence statistiquement significative entre les groupes de temps de sommeil sur le taux moyen de testostérone.  
+- Le temps de sommeil, tel que catégorisé ici, ne semble pas influencer la testostérone de manière détectable avec cette ANOVA.
+
+
+### Analyse du tableau de fréquence entre hypogonadisme et activité physique modérée:
+```{r, echo = FALSE, warning=FALSE, message = FALSE}
+#------------------activité physique / Hypogonadisme -----------------
+
+# Puis CrossTable avec les nouvelles variables labellisées
+CrossTable(dataset_final$hypogonadisme_lab, dataset_final$PAQ650_lab, prop.chisq=FALSE)
+```
+
+Nous remarquons que parmi les individus hypogonades qui représentent quasiment un quart de notre échantillon, 25,2% pratiquent une activité physique modérée, contre 36,5% chez les non-hypogonades, soit une différence de plus de 10 points de pourcentage. Cette différence suggère une association significative entre l’activité physique modérée et l’hypogonadisme.
+
+Cependant, cette observation ne permet pas d’affirmer une relation de causalité : il est tout aussi plausible que l’hypogonadisme réduise l’envie ou la capacité à pratiquer une activité physique, ou, qu’une absence d’activité physique contribue à une baisse des taux de testostérone. D’autres facteurs confondants (âge, obésité, santé générale…) pourraient également jouer un rôle.
+
+Une étude longitudinale ou expérimentale serait nécessaire pour établir un lien de cause à effet, en plus d'un test de corrélation de Khi² entre nos deux variables.
+
+### Test du Chi² de Pearson : test de corrélation entre activité physique modérée et hypogonadisme:
+```{r, echo = FALSE, warning=FALSE, message = FALSE}
+# Test de khi² de corrélation entre activité physique modérée et testo:
+
+print(test_chi2)
+```
+
+**Hypothèses :**
+
+- **H0** : Il n’y a pas d’association entre l’hypogonadisme et la pratique d’activité physique modérée. Ces deux variables sont indépendantes. (χ2 < 3.84 pour p. value > 0.05)
+- **H1** : Il existe une association entre l’hypogonadisme et la pratique d’activité physique modérée. Ces variables sont dépendantes.
+
+**Résultats :**
+
+- Degrés de liberté (df) : 1 (car tableau 2x2).
+- La statistique du test : *χ2 = 26.274*. (au dessus de la valeur critique de 3.84 pour un seuil de 0.05)
+- p-value: 2.96 x 10−7 (très faible).
+
+**Interprétation et conclusion :**
+La p-value est très inférieure au seuil classique de 0.05, donc on rejette l’hypothèse nulle H0.
+Cela signifie qu’il existe une association statistiquement significative entre la présence d’hypogonadisme et la pratique d’activité physique modérée dans ton échantillon.
+Autrement dit, la proportion d’hommes avec hypogonadisme diffère significativement selon qu’ils pratiquent ou non une activité physique modérée.
+Cette association peut s’expliquer par le fait que l’hypogonadisme entraîne souvent une baisse d’énergie et de motivation, ce qui réduit la pratique d’activité physique. Inversement, la pratique régulière d’activité physique pourrait contribuer à maintenir des niveaux optimaux de testostérone, réduisant ainsi le risque de développer un hypogonadisme.
+
+
+### Croisement entre oestradiol et testostérone :
+
+```{r, echo = FALSE, warning=FALSE, message = FALSE}
+#-------------------Taux estradiol / Hypogonadisme-------------------
+ggplot(dataset_final, aes(x = LBXEST, fill = factor(hypogonadisme))) +
+  geom_density(alpha = 0.5) + # Trace des courbes de densité pour la distribution du taux d'œstradiol, `alpha = 0.5` rend les courbes semi-transparentes pour voir les recouvrement
+  labs(x = labels["LBXEST"], # Nom personnalisé pour l'axe des x (taux d'œstradiol)
+       fill = "Hypogonadisme", # Légende de la couleur (catégories d’hypogonadisme)
+       title = "Densité du taux d'œstradiol selon l'hypogonadisme") + # Titre du graphique
+  theme_minimal()
+```
+
+Il est intéressant de croiser l'hypogonadisme et l'oestradiol: des taux anormalement bas d’œstradiol chez les hommes peuvent être le reflet indirect d’un déficit en testostérone, comme c’est souvent le cas dans le cadre d’un hypogonadisme. Inversement, des taux relativement élevés d’œstradiol dans un contexte de faible testostérone peuvent aussi évoquer un déséquilibre métabolique ou une activité aromatasique excessive, parfois observée dans certaines conditions comme l’obésité ou le vieillissement.
+
+**Description:**
+Ce graphique montre la distribution d'oestradiol en pg/mL pour deux groupes : les individus hypogonades et ceux non hypogonades. L’axe horizontal indique les niveaux d’œstradiol mesurés dans le sang, tandis que l’axe vertical représente la densité de probabilité (et non le nombre brut d’individus).
+
+**Tendance observée :**
+
+Les hommes non hypogonades tendent à avoir des taux d’œstradiol plus élevés que ceux qui sont hypogonades.
+
+**Interprétation :**
+
+Le graphique de densité montre que les hommes hypogonades présentent une distribution d’œstradiol déplacée vers les valeurs plus faibles, par rapport aux non hypogonades.
+Cela soutient l'idée qu'un taux réduit de testostérone est souvent accompagné d’un taux réduit d’œstradiol: *étude: Rochira et al. (2006)*, ce qui est cohérent avec la physiologie endocrinienne masculine.
+On peut confirmer statistiquement cette différence par un test de Wilcoxon.
+
+
+#### Test de Wilcoxon (rang-somme de Mann-Whitney) pour la relation entre hypogonadisme et taux d'oestradiol
+```{r, echo = FALSE, warning = FALSE, message = FALSE}
+# test de Wolcoxon pour tester la relation entre oestradiol et hypogonadisme
+wilcox.test(LBXEST ~ hypogonadisme, data = dataset_final)
+```
+
+**Hypothèses:**
+
+- **H0 ** : La distribution du taux d’œstradiol est identique dans les deux groupes. (p. value > 0.05)
+- **H1 ** : Il existe une différence de localisation (médiane ou distribution globale) entre les deux groupes.
+
+**Résultats:**
+- **p-value < 2.2e-16 :** Extrêment faible, bien inférieure au seuil de 0.05, on rejette H0.
+
+**Interprétation et conclusion:**
+Il existe une différence statistiquement significative entre les distributions des taux d’œstradiol chez les hommes hypogonades et non hypogonades. Plus précisément, les hommes non hypogonades présentent des taux d’œstradiol significativement plus élevés.
+Cela s’explique par le fait que l’œstradiol est produit à partir de la testostérone via l’aromatase. Ainsi, en cas d’hypogonadisme (faible testostérone), on observe aussi une réduction du taux d’œstradiol, ce qui justifie les résultats.
+
+
+### Mdolèle 1 (MCO) de l'effet du mode de vie sur les taux de testostérone.
+```{r, echo = FALSE, warning=FALSE, message = FALSE}
+# 🧑🔬 MODELES STATISTIQUES
+
+# Modèle MCO sur le mode de vie
+modele_mode_vie %>%
+  tbl_regression(
+    label = as.list(labels), # Utilise la liste 'labels' pour nommer les variables dans le tableau
+    estimate_fun = ~style_sigfig(., digits = 2), # Formate les coefficients estimés avec 2 chiffres significatifs
+    pvalue_fun = ~style_pvalue(., digits = 3),  # Formate les p-values avec 3 décimales
+    conf.int = TRUE,
+  ) %>%
+  add_significance_stars() %>%               # Ajoute les étoiles
+  modify_column_unhide(column = "ci") %>%    # Pour être sûr d'afficher les IC
+  modify_column_unhide(column = "p.value") %>% # Pour être sûr d'afficher la p_value
+  as_flex_table()
+
+# Affichage du R² ajusté et test de Fisher
+f <- summary(modele_mode_vie)$fstatistic
+pval_f <- pf(f[1], f[2], f[3], lower.tail = FALSE) # Calcul de la p-value associée au test de Fisher (test global du modèle)
+cat(
+  "R² ajusté :", round(summary(modele_mode_vie)$adj.r.squared, 3), "\n", "\n",   # Affiche le R² ajusté du modèle, arrondi à 3 décimales
+  "Test de Fisher : F(", f[2], ",", f[3], ") =", round(f[1], 2), "\n",   # Affiche la statistique F avec ses degrés de liberté, arrondie à 2 décimales
+  ", p. value =", format.pval(pval_f, digits = 3)  # Affiche la p-value du test de Fisher, formatée avec 3 chiffres significatifs
+)
+
+# Test d'homoscédasticité (Breusch-Pagan)
+bptest(modele_mode_vie)
+
+# colinéarité:
+vif(modele_mode_vie)
+```
+
+**📊 Interprétation des résultats:**
+
+Toutes les interprétations sont faites au seuil de 1 %, en supposant que les autres variables restent constantes. Environ 30 % des variables incluses sont significatives.
+
+🧓 Âge: Une augmentation de 10 ans entraîne une baisse moyenne de près de 10 ng/dL de testostérone totale, en accord avec la littérature indiquant une diminution annuelle de 1 à 2 % après 30 ans, variable selon populations et méthodes.
+
+🏃‍♂️ Activité physique modérée: La pratique d’une activité physique modérée augmente la testostérone de 26 ng/dL en moyenne. Ce résultat robuste confirme l’effet positif global de l’activité physique sur la production hormonale, même si l’effet dépend du type, de la durée et de la régularité de l’effort.
+
+🪑 Durée d’activité assise: Chaque minute passée assise diminue la testostérone de 0.05 ng/dL, soit environ 24 ng/dL pour une journée de 8 heures assis. Ce résultat rejoint *Park et al. (2019)* qui associent la sédentarité à une baisse hormonale via la réduction de l’activité physique, la prise de poids et l’inflammation. Ainsi, l'activité physique modérée permet de compenser les méfaits de la sédentarité sur la testostérone.
+
+**⚠️ Variables non significatives:**
+Certaines variables attendues comme le sommeil ne sont pas significatives ici, contrairement à la littérature (*Leproult & Van Cauter, 2011*), qui montre une baisse notable de la testostérone après privation de sommeil. De même, la consommation de sucres est positivement associée à la testostérone (+0.15 ng/dL/g), ce qui contraste avec les études liant sucres excessifs à une baisse hormonale (*Hussein et al., 2017*). Une hypothèse est qu’un apport modéré en glucides soutient la production d’énergie nécessaire au système endocrinien.
+
+
+**📈 Qualité globale du modèle:**
+
+🔬 Test de Fisher:
+
+- H₀ : aucune variable n’a d’effet significatif.
+- H₁ : au moins une variable a un effet significatif.
+
+Le test de Fisher est significatif (p < 0.001), indiquant que le modèle global prédit significativement la testostérone, avec au moins une variable explicative importante.
+
+📉 R² ajusté
+Le R² ajusté est faible (0.025), signifiant que seulement 2,5 % de la variance de la testostérone est expliquée. Cela s’explique par :
+
+La complexité des facteurs influençant la testostérone (état psychologique, pathologies, hormones régulatrices comme LH, FSH, GnRH).
+
+Une forte variabilité individuelle liée aux cycles circadiens, au stress, etc.
+
+La possible présence d’effets non linéaires ou d’interactions non modélisées.
+
+🧪 Test d’homoscédasticité:
+Le test de Breusch-Pagan a été effectué pour évaluer l’homoscédasticité des résidus du modèle. Avec une statistique BP = 12.097 sur 10 degrés de liberté et une p-value de 0.279, nous ne rejetons pas l’hypothèse nulle d’homoscédasticité. Cela suggère que la variance des termes d’erreur est constante à travers les valeurs prédites, validant ainsi l’une des hypothèses clés du modèle linéaire classique, et assurant la fiabilité des intervalles de confiance et des tests de significativité des coefficients.
+
+⚖️ Vérification de la multicolinéarité:
+Les facteurs d'inflation de la variance (VIF) calculés pour les variables du modèle varient entre 1.008 et 3.674. Tous ces valeurs sont bien en dessous du seuil communément accepté de 5 (voire 10), indiquant une faible colinéarité entre les variables explicatives. Ainsi, aucune variable ne semble redondante ou fortement corrélée à une autre, ce qui garantit la stabilité et la fiabilité des estimations des coefficients du modèle.
+
+**🔍 Conclusion et perspectives:**
+Ce modèle confirme que l’âge, l’activité physique modérée et la sédentarité influencent significativement le taux de testostérone. Malgré un R² ajusté faible (2,5 %), ces résultats soulignent l’importance du mode de vie sur la santé hormonale.
+
+Pour améliorer la compréhension, il serait utile d’intégrer d’autres facteurs biologiques (hormones régulatrices, état psychologique) et environnementaux, ainsi que d’explorer des modèles plus complexes.
+
+Ces résultats encouragent à promouvoir l’activité physique et à limiter la sédentarité comme leviers simples pour soutenir la testostérone naturellement.
+
+### Mdolèle 2 (MCO) modèle physiologique de l'effet des indicateurs biologiques sur les niveaux de testostérone.
+```{r, echo = FALSE, warning=FALSE, message = FALSE}
+
+# Modèle MCO sur les indicateurs biologiques
+modele_physiologique %>%
+  tbl_regression(
+    label = as.list(labels),
+    estimate_fun = ~style_sigfig(., digits = 2),
+    pvalue_fun = ~style_pvalue(., digits = 3),
+    conf.int = TRUE,
+  ) %>%
+  add_significance_stars() %>%               # Ajoute les étoiles
+  modify_column_unhide(column = "ci") %>%    # Pour être sûr d'afficher les IC
+  modify_column_unhide(column = "p.value") %>% # Pour être sûr d'afficher la p_value
+  as_flex_table()
+
+# Affichage du R² ajusté et test de Fisher
+f <- summary(modele_physiologique)$fstatistic
+pval_f <- pf(f[1], f[2], f[3], lower.tail = FALSE)
+cat(
+  "R² ajusté :", round(summary(modele_physiologique)$adj.r.squared, 3), "\n", "\n",
+  "Test de Fisher : F(", f[2], ",", f[3], ") =", round(f[1], 2), "\n",
+  ", p. value =", format.pval(pval_f, digits = 3)
+)
+
+# Test d'homoscédasticité (Breusch-Pagan)
+bptest(modele_physiologique)
+
+# colinéarité:
+vif(modele_physiologique)
+```
+
+**📊 Interprétation des résultats:**
+
+Toutes les interprétations sont faites au seuil de 1 %, en supposant que les autres variables restent constantes. Environ 30 % des variables incluses sont significatives.
+
+📏 Tour de taille : Chaque centimètre supplémentaire de tour de taille réduit significativement la testostérone de 2.3 ng/dL (p < 0.001). Cela souligne l’effet négatif de l’adiposité abdominale, souvent associée à la résistance à l’insuline et à une inflammation chronique qui peut perturber la synthèse hormonale (*Corona et al., 2013*), voire à l'aromatase. Cela confirme bien notre statistique descriptive.
+
+🔗 SHBG (Sex Hormone Binding Globulin) : L’augmentation de SHBG est fortement corrélée à une hausse du taux de testostérone (5.3 ng/dL par unité, p < 0.001). SHBG module la disponibilité des hormones sexuelles ; son augmentation peut refléter une meilleure régulation hormonale (*Rosner et al., 2013*). Ou bien, une difficulté à rendre la testostérone disponible dans l'organiste car trop liée à la SHBG, ce qui aurait pour effet de la garder stocker et indisponible dans le sang, augmentant ainsi le taux de testostérone totale : *Mohr et al., 2005 – “Normal, bound and bioavailable testosterone in aging men*.
+
+💙 Cholestérol HDL : Un effet positif significatif est observé, avec une augmentation de 0.78 ng/dL par mg/dL de HDL (p < 0.001). Ce lien peut s’expliquer par le rôle protecteur du HDL sur le métabolisme lipidique et endocrinien, favorisant une meilleure production hormonale (*Haring et al., 2011*).
+
+🩸 Albumine : L’albumine, une protéine de transport sanguine, est également positivement associée à la testostérone (2.6 ng/dL, p = 0.007), ce qui est cohérent avec son rôle dans le transport et la biodisponibilité hormonale (*Morgentaler, 2015*).
+
+**📊✨ Résumé statistique du modèle :**
+
+Le modèle explique 52 % de la variance du taux de testostérone totale (R² ajusté = 0.52), ce qui indique un pouvoir explicatif substantiel. Le test de Fisher est hautement significatif (F = 190.59, p < 2e-16), confirmant que l’ensemble des variables incluses contribue significativement à la prédiction du taux de testostérone.
+
+**🧪 Test d’homoscédasticité de Breusch-Pagan :**
+
+Le test de Breusch-Pagan appliqué à notre modèle physiologique révèle une valeur de BP = 189.65, avec 15 degrés de liberté et une p-value < 2.2e-16.
+
+Cela indique une hétéroscédasticité significative : la variance des résidus n’est pas constante à travers les niveaux des prédicteurs.
+Autrement dit, l'hypothèse d’homoscédasticité est rejetée, ce qui viole un des postulats fondamentaux de la régression linéaire.
+
+Conséquences :
+
+- Les erreurs standards peuvent être biaisées, affectant la fiabilité des tests statistiques.
+- Les coefficients restent non biaisés, mais les valeurs de p peuvent être trompeuses.
+
+**🔍 Conclusion du modèle physiologique:**
+
+Ce modèle explique environ 52 % de la variance du taux de testostérone totale, ce qui est un pouvoir explicatif nettement supérieur à notre modèle précédent. Le test de Fisher confirme que l’ensemble des variables incluses a un effet significatif sur la testostérone (p < 2.2e-16).
+
+Cependant, la détection d’une hétéroscédasticité forte via le test de Breusch-Pagan suggère que la variance des erreurs n’est pas constante, ce qui peut biaiser nos int ervalles de confiance et tests de significativité. Pour renforcer la robustesse des conclusions, il serait pertinent d’ajuster le modèle avec des erreurs robustes.
+
+### Résumé des résultats avec erreurs robustes du modèle physiologique
+```{r, echo = FALSE, warning=FALSE, message = FALSE}
+# Récupérer les noms exacts des coefficients (incluant modalités)
+coef_names <- names(coef(modele_physiologique))
+
+# Associer chaque coefficient à son label, sinon garder le nom original
+labels_complete <- sapply(coef_names, function(x) {
+  if (x %in% names(labels)) {
+    labels[[x]]
+  } else {
+    x  # si label manquant, garder le nom de la variable brute
+  }
+})
+
+
+# Calcul de la matrice de variance-covariance robuste HC3
+cov_robust <- vcovHC(modele_physiologique, type = "HC3") #matrice de covariance robuste (de White)
+
+# Coefficients et erreurs robustes
+estimates <- coef(modele_physiologique)
+robust_se <- sqrt(diag(cov_robust)) #Extraction des erreurs standards robustes
+
+# Calcul des p-values robustes avec coeftest
+robust_test <- coeftest(modele_physiologique, vcov = cov_robust) #Récupération des coefficients estimés (valeurs des paramètres) du modèle linéaire
+p_values <- robust_test[, "Pr(>|t|)"]
+
+# Calcul des intervalles de confiance à 95%
+z_crit <- qnorm(0.975)
+lower <- estimates - z_crit * robust_se
+upper <- estimates + z_crit * robust_se
+
+# Puis créer le tableau
+resultats <- data.frame(
+  Variable = labels_complete,
+  Estimate = estimates,
+  Robust_SE = robust_se,
+  CI_lower = lower,
+  CI_upper = upper,
+  p_value = p_values,
+  row.names = NULL
+)
+
+# Arrondir et afficher
+resultats <- resultats %>%
+  mutate(
+    Estimate = round(Estimate, 2),
+    Robust_SE = round(Robust_SE, 2),
+    CI_lower = round(CI_lower, 2),
+    CI_upper = round(CI_upper, 2),
+    p_value = signif(p_value, 3)
+  )
+
+kable(resultats, caption = "Estimation des coefficients avec erreurs robustes HC3")
+
+
+```
+
+Une variable supplémentaire semble significative:
+L'albumine (β = 2.56, p = 0.007) : L’albumine, une protéine de transport dans le sang, montre une association positive avec la testostérone totale: augmentation de 25.6 nd/dL de la testostérone totale quand le taux d'albumine dans le sang augmente de 10g. Étant donné que l’albumine transporte une partie de la testostérone liée, son rôle est attendu (*Vermeulen et al., 1999*). Néanmoins, l’association peut aussi refléter l’état nutritionnel général plutôt qu’un effet direct.
+
+
+
+**Regard critique: **
+
+Les larges intervalles de confiance pour certaines catégories ethniques et les p-values proches du seuil invitent à la prudence. L’association positive entre cholestérol HDL et testostérone totale mérite des études longitudinales pour clarifier la causalité.
+
+L’effet de l’albumine doit être interprété avec soin, car seule la testostérone libre et la fraction liée faiblement à l’albumine sont biologiquement actives, contrairement à la testostérone liée à la SHBG.
+
+Enfin, les associations négatives avec l’âge et le tour de taille confirment les résultats de la littérature sur l’impact du vieillissement et du métabolisme sur la testostérone.
+
+Mettre en place un modèle logistique permet d’évaluer la probabilité d’hypogonadisme (état clinique défini par un seuil critique de testostérone), plutôt que de se limiter à l’analyse continue de la testostérone totale. Cela facilite l’identification des facteurs de risque cliniquement pertinents et l’aide à la prise de décision médicale.
+
+### Interprétation du modèle logistique sur l’hypogonadisme
+```{r, echo = FALSE, warning=FALSE, message = FALSE}
+
+# Modèle logistique global
+modele_logistique %>%
+  tbl_regression(
+    label = as.list(labels),
+    estimate_fun = ~style_ratio(., digits = 2),   # Affiche OR avec 2 chiffres significatifs
+    pvalue_fun = ~style_pvalue(., digits = 3),
+    exponentiate = TRUE,                          # Affiche les coefficients exponentiés (OR)
+    conf.level = 0.95                            # IC à 95%
+  ) %>%
+  add_significance_stars() %>%                    # Ajoute étoiles pour la p-value
+  modify_column_unhide(column = "p.value") %>%    # Affiche la colonne p-value
+  modify_column_unhide(column = "ci") %>%
+  as_flex_table()
+
+```
+
+Les résultats indiquent que parmi toutes les variables testées, seules l’âge et le tour de taille ont un effet significatif sur la probabilité d’hypogonadisme, tandis que la SHBG présente un effet inverse significatif.
+
+🧓 Âge (OR = 1.05, p < 0.001) : Pour chaque année supplémentaire, les chances d’hypogonadisme augmentent de 5 %, ce qui est cohérent avec la littérature montrant que la testostérone diminue naturellement avec l’âge (*Harman et al., 2001*).
+
+📏 Tour de taille (OR = 1.05, p < 0.001) : Une augmentation d’un centimètre du tour de taille accroît la probabilité d’hypogonadisme de 5 %. Cela souligne le rôle de l’obésité abdominale dans la dysrégulation hormonale (*Corona et al., 2011*).
+
+🔗 SHBG (OR = 0.91, p < 0.001) : Chaque unité supplémentaire de SHBG diminue de 9 % le risque d’hypogonadisme, ce qui correspond à son rôle dans le transport et la disponibilité des hormones sexuelles (*Rosner et al., 2010*).
+
+Les autres variables, notamment l’IMC, les consommations alimentaires (calories, sucres, alcool, magnésium, zinc), l’activité physique, les habitudes de sommeil et les marqueurs lipidiques, n’ont pas montré d’association statistiquement significative.
+
+
+**Limites et recommandations:**
+
+Certaines variables non significatives pourraient avoir un effet faible ou nécessiter une plus grande taille d’échantillon.
+Il est important de vérifier la multicolinéarité entre variables, notamment tour de taille et IMC.
+Réaliser des tests complémentaires comme Hosmer-Lemeshow pour l’ajustement du modèle et une courbe ROC pour la performance prédictive.
+Considérer d’ajouter des interactions possibles entre variables.
+Vérifier la pertinence clinique des effets même quand les OR sont proches de 1.
+
+```{r, echo = FALSE, warning=FALSE, message = FALSE}
+# Test de Hosmer-Lemeshow : Ajustement global du modèle
+hoslem.test(
+  x = dataset_final$hypogonadisme,
+  y = fitted(modele_logistique),
+  g = 10  # nombre de groupes pour les déciles de risque, 10 est courant
+)
+
+# Courbe ROC et AUC pour évaluer la discrimination du modèle
+roc_obj <- roc(dataset_final$hypogonadisme, fitted(modele_logistique))
+plot(roc_obj)
+auc(roc_obj)
+
+```
+**Hypothèses et interprétations du test de Hosmer-Lemeshow :**
+
+- **H0 ** : Le modèle logistique s’ajuste correctement aux données (pas de différence significative entre les probabilités prédites et les observations réelles dans les sous-groupes) (p. value > 0.05).
+- **H1 ** : Le modèle ne s’ajuste pas bien aux données.
+
+
+**📌 Conclusion :**
+Avec une p-value très faible (p < 0.05), on rejette H₀. Cela indique qu'il existe une différence significative entre les valeurs observées et les valeurs attendues. Le modèle logistique pourrait ne pas être bien calibré, c’est-à-dire que les probabilités prédites ne correspondent pas bien aux probabilités réelles dans certains sous-groupes de risque.
+
+**✅Courbe ROC – Interprétation de l’AUC:**
+
+- AUC = 0.8387
+
+Cela signifie que le modèle a une bonne capacité discriminante. 
+
+> *Note: Si l'on prend au hasard un individu avec hypogonadisme et un sans, le modèle a 83.9 % de chances d’attribuer un score de probabilité plus élevé à la personne atteinte qu’à la personne non atteinte.*
+
+**🧠 Conclusion: ** Le modèle discrimine correctement les individus à risque et peut être utilisé, mmême si l'ajustement est à améliorer pour mieux prédire les probas extactes.
+
+
+### 🧾 Conclusion générale:
+
+Cette étude met en évidence plusieurs facteurs significativement associés aux niveaux de testostérone totale chez les hommes, en particulier l’âge, la SHBG et le tour de taille. Les résultats confirment des liens déjà établis dans la littérature entre mode de vie, métabolisme et équilibre hormonal. Malgré un pouvoir explicatif limité du modèle linéaire, le modèle logistique présente de bonnes performances discriminantes (AUC = 0.84). Ces analyses pourraient contribuer à mieux cibler les populations à risque d’hypogonadisme dans une perspective de santé publique.
