@@ -1,5 +1,7 @@
 # 🇫🇷 Analyse des déterminants du taux de testostérone chez les hommes 🧪
 
+### [Consulter le rapport](https://maxime97hrv.github.io/analyse-testosterone-nhanes/Rapport.html)
+
 Ce projet explore les facteurs influençant la testostérone totale à partir des données NHANES 2013–2016, via des modèles de régression linéaire et logistique. L’objectif est d’identifier les déterminants biologiques et comportementaux liés au taux de testostérone et à l’hypogonadisme, et de proposer des pistes d’interprétation selon la littérature scientifique.
 
 ## Méthodologie 📊
@@ -15,7 +17,7 @@ Ce projet explore les facteurs influençant la testostérone totale à partir de
 ## Mode d'emploi 📁
 
 1. **Téléchargement des données**  
-   Commencez par exécuter le script **`Download_data_nhanes.R`** qui télécharge automatiquement les fichiers NHANES nécessaires pour les années 2013–2016.
+   Commencez par exécuter le script **`Download_data_nhanes.R`** qui télécharge automatiquement les fichiers NHANES nécessaires pour les années 2013–2016. Sinon, vous pouvez directement télécharger l'ensemble du projet et mettre le dossier `Data Base` dans la même racine que les fichiers .R, vous n'aurez donc pas besoin de lancer le programme de téléchargement `Download_Data_nhanes.R`.
 
 2. **Analyse et rapport**  
    Une fois les données téléchargées, lancez le fichier **`Rapport.rmd`** pour générer l’analyse complète et le rapport final au format HTML.
@@ -32,7 +34,9 @@ Le fichier `Rapport.html` contient l’analyse complète et détaillée.
 
 # 🇬🇧 Analysis of Testosterone Determinants in Men 🧪
 
-This project explores the factors influencing total testosterone based on NHANES 2013-2016 data, using linear and logistic regression models. The aim is to identify the biological and behavioural determinants linked to testosterone levels and clinical hypogonadism, and to propose interpretations based on the scientific literature.
+### [Read the report](https://maxime97hrv.github.io/analyse-testosterone-nhanes/Rapport.html)
+
+This project explores the factors influencing total testosterone based on NHANES 2013-2016 data, using linear and logistic regression models. The aim is to identify the biological and behavioural determinants linked to testosterone levels and clinical hypogonadism, and to propose interpretations based on the scientific literature. Vous n'aurez donc pas besoin de lancer le programme de téléchargement `Download_Data_nhanes.R`.
 
 ## Methodology 📊
 - Data: NHANES 2013-2016
@@ -47,7 +51,7 @@ This project explores the factors influencing total testosterone based on NHANES
 ## Operating instructions 📁
 
 1. **Download data** 
- Start by running the **`Download_data_nhanes.R`** script which automatically downloads the NHANES files required for the years 2013-2016.
+ Start by running the **`Download_data_nhanes.R`** script which automatically downloads the NHANES files required for the years 2013-2016. Alternatively, you can download the whole project directly and put the `Data Base` folder in the same root as the .R files, so you won't need to run the `Download_Data_nhanes.R` download program.
 
 2. **Analysis and report** 
  Once the data has been downloaded, run the **`Report.rmd`** file to generate the full analysis and final report in HTML format.
