@@ -2,9 +2,17 @@
 title: "Analyse des déterminants de la testostérone"
 author: "Maxime HERVE"
 date: "2025-05-26"
-output: html_document
+output:
+  html_document:
+    toc: true
+    toc_depth: 2
+    toc_float: true
+  pdf_document:
+    toc: true
+    toc_depth: 2
+    pdf_engine: xelatex
 ---
-### Introduction: 
+# Introduction: 
 
 La testostérone est une hormone clé du système endocrinien masculin, jouant un rôle central dans la régulation de la masse musculaire, de la densité osseuse, de la libido, ainsi que dans diverses fonctions métaboliques (*Matsumoto, 2013*). Le déclin progressif des taux de testostérone avec l’âge est bien documenté et associé à plusieurs comorbidités, notamment l’obésité, les troubles métaboliques et cardiovasculaires (*Kaufman & Vermeulen, 2005*).
 
@@ -12,8 +20,9 @@ Dans cette étude, nous avons sélectionné un ensemble de variables physiologiq
 
 Des paramètres biochimiques comme le cholestérol HDL et l’albumine sont également pris en compte, en raison de leur rôle dans le transport hormonal et leur potentiel impact sur l’état métabolique général (*Feldman et al., 2002*). Cette approche multifactorielle permet d’explorer les déterminants majeurs de la testostérone tout en tenant compte des interactions complexes entre facteurs biologiques et environnementaux.
 
+# Méthodologie:
 
-### Les variables:
+## Vue d'ensemble sur les variables:
 ```{r, echo = FALSE, warning=FALSE, message = FALSE}
 library(sandwich)
 library(lmtest)
@@ -41,7 +50,17 @@ L’âge moyen est de 43,6 ans, avec un IMC moyen de 28,7 kg/m², indiquant une 
 Le cholestérol HDL varie entre 22 et 99 mg/dL, pour une moyenne de 47,7 mg/dL.
 On observe une large variabilité interindividuelle sur plusieurs variables, notamment la consommation d’alcool, la cotinine (nicotine), ou encore la durée d’activité assise.
 
+## Justification du choix des modèles:
 
+Nous avons choisi d'utiliser deux types de régression pour répondre à deux questions distinctes.
+
+- **La régression linéaire** a été employée pour modéliser le lien entre des variables continues (comme l'âge et le tour de taille) et une variable de résultat continue (la testostérone totale). Cela nous a permis de quantifier la force et la direction de ces relations.
+
+- **La régression logistique** a été choisie pour une tâche de classification binaire : prédire le risque clinique qu'un patient soit atteint d'hypogonadisme (soit "oui", soit "non"). Ce modèle est particulièrement adapté pour ce type de problématique car il est conçu pour prédire des résultats qui ont seulement deux issues possibles.
+
+# Statistiques descriptives
+
+## Croisement entre l'âge et le taux de testostérone sanguin.
 
 ### Tests de Shapiro-Wilk, de normalité de l’âge et du taux de testostérone:
 ```{r, echo = FALSE, warning=FALSE, message = FALSE}
@@ -60,8 +79,6 @@ Les tests de normalité de Shapiro-Wilk appliqués aux variables âge `RIDAGEYR`
 Cela signifie que la distribution de ces deux variables s’écarte fortement d’une distribution normale.  
 
 > *Note : ce résultat justifie l’utilisation de méthodes statistiques non paramétriques, comme le test de corrélation de Spearman, pour analyser la relation entre âge et testostérone.*
-
-
 
 
 ### Graphique du taux de testostérone moyen selon l'age:
@@ -104,6 +121,7 @@ Cela suggère que le taux de testostérone tend à diminuer légèrement avec l�
 
 > *Note : la présence de valeurs identiques dans les données empêche le calcul exact de la p-value, mais le résultat reste fiable.*
 
+## Croisement entre le taux de cholestérol HDL et le taux de testostérone sanguin.
 
 ### Analyse du graphique entre la testostérone en fonction du HDL:
 ```{r, echo = FALSE, warning = FALSE, message = FALSE}
@@ -147,6 +165,7 @@ cor.test(dataset_final$LBDHDD, dataset_final$LBXTST, method = "spearman")
 
 - On rejette l'hypothèse nulle et on conclut à **une association monotone positive forte**: plus le taux de HDL est élevé, plus le taux de testostérone a tendance à être haut. Cette association est robuste et peu probable d’être due au hasard dans les données.
 
+## Corrélation entre le taux de vitamine D et le taux de testostérone sanguin.
 
 ### Interprétation du test de corrélation de Spearman sur la vitamine D:
 ```{r, echo = FALSE, warning=FALSE, message = FALSE}
@@ -163,6 +182,7 @@ D’un point de vue physiologique, certaines études (1) ont suggéré que la vi
 
 (1): *: Association Between Vitamin D Deficiency and Testosterone Levels in Adult Males: A Systematic Review (Alexander Muacevic, John R Adler)*
 
+## Croisement entre le tour de taille et le taux de testostérone sanguin.
 
 ### Analyse du graphique entre la testostérone et le tour de taille:
 ```{r, echo = FALSE, warning=FALSE, message = FALSE}
@@ -198,7 +218,7 @@ Une **analyse de régression** incluant d'autres variables, permettrait de quant
 ### Test de corrélation de Spearman entre le tour de taille et le taux de testostérone:
 ```{r, echo = FALSE, warning = FALSE, message = FALSE}
 # Calcul de la corrélation de Spearman entre HDL et testostérone
-cat("Corrélation de Spearman rho =", round(cor_test$estimate, 3), "\n", "p-value =", signif(cor_test$p.value, 3), "\n")
+cat("Corrélation de Spearman ρ =", round(cor_test$estimate, 3), "\n", "p-value =", signif(cor_test$p.value, 3), "\n")
 ```
 
 Le coefficient de corrélation de Spearman est ρ = -0.428, ce qui indique une corrélation négative modérée : quand le tour de taille augmente, le taux de testostérone a tendance à diminuer.
@@ -208,6 +228,7 @@ La p-value est extrêmement faible (p = 1.8e-117), bien inférieure à un seuil 
 On rejette l'hypothèse nulle et on conclut à une association monotone négative forte: 
 Plus le tour de taille est élevé, plus le taux de testostérone a tendance à être bas. Cette association est robuste et peu probable d’être due au hasard dans les données.
 
+## Croisement entre le temps de sommeil et le taux de testostérone sanguin.
 
 ### Analyse du graphique de boïte à moustache du temps de sommeil sur la testostérone:
 ```{r, echo = FALSE, warning=FALSE, message = FALSE}
@@ -248,6 +269,7 @@ summary(anova_result)
 - Autrement dit, il n’y a pas de différence statistiquement significative entre les groupes de temps de sommeil sur le taux moyen de testostérone.  
 - Le temps de sommeil, tel que catégorisé ici, ne semble pas influencer la testostérone de manière détectable avec cette ANOVA.
 
+## Croisement entre l'activité physique modérée et le risque clinique d'hypogonadisme.
 
 ### Analyse du tableau de fréquence entre hypogonadisme et activité physique modérée:
 ```{r, echo = FALSE, warning=FALSE, message = FALSE}
@@ -257,7 +279,7 @@ summary(anova_result)
 CrossTable(dataset_final$hypogonadisme_lab, dataset_final$PAQ650_lab, prop.chisq=FALSE)
 ```
 
-Nous remarquons que parmi les individus hypogonades qui représentent quasiment un quart de notre échantillon, 25,2% pratiquent une activité physique modérée, contre 36,5% chez les non-hypogonades, soit une différence de plus de 10 points de pourcentage. Cette différence suggère une association significative entre l’activité physique modérée et l’hypogonadisme.
+Nous remarquons que parmi les individus hypogonades qui représentent quasiment un quart de notre échantillon, 25,2% pratiquent une activité physique modérée, contre 36,5% chez les non hypogonades, soit une différence de plus de 10 points de pourcentage. Cette différence suggère une association significative entre l’activité physique modérée et l’hypogonadisme.
 
 Cependant, cette observation ne permet pas d’affirmer une relation de causalité : il est tout aussi plausible que l’hypogonadisme réduise l’envie ou la capacité à pratiquer une activité physique, ou, qu’une absence d’activité physique contribue à une baisse des taux de testostérone. D’autres facteurs confondants (âge, obésité, santé générale…) pourraient également jouer un rôle.
 
@@ -288,8 +310,9 @@ Autrement dit, la proportion d’hommes avec hypogonadisme diffère significativ
 Cette association peut s’expliquer par le fait que l’hypogonadisme entraîne souvent une baisse d’énergie et de motivation, ce qui réduit la pratique d’activité physique. Inversement, la pratique régulière d’activité physique pourrait contribuer à maintenir des niveaux optimaux de testostérone, réduisant ainsi le risque de développer un hypogonadisme.
 
 
-### Croisement entre oestradiol et testostérone :
+## Taux d'oestradiol sanguin des individus hypogonades et non hypogonades..
 
+### Graphique de comparaison de distribution du taux d'oestradiol entre individus hypogonades et non-hypogonades:
 ```{r, echo = FALSE, warning=FALSE, message = FALSE}
 #-------------------Taux estradiol / Hypogonadisme-------------------
 ggplot(dataset_final, aes(x = LBXEST, fill = factor(hypogonadisme))) +
@@ -334,6 +357,9 @@ wilcox.test(LBXEST ~ hypogonadisme, data = dataset_final)
 Il existe une différence statistiquement significative entre les distributions des taux d’œstradiol chez les hommes hypogonades et non hypogonades. Plus précisément, les hommes non hypogonades présentent des taux d’œstradiol significativement plus élevés.
 Cela s’explique par le fait que l’œstradiol est produit à partir de la testostérone via l’aromatase. Ainsi, en cas d’hypogonadisme (faible testostérone), on observe aussi une réduction du taux d’œstradiol, ce qui justifie les résultats.
 
+# Modélisation
+
+## Modèles linéaires (MCO)
 
 ### Mdolèle 1 (MCO) de l'effet du mode de vie sur les taux de testostérone.
 ```{r, echo = FALSE, warning=FALSE, message = FALSE}
@@ -412,6 +438,7 @@ Ce modèle confirme que l’âge, l’activité physique modérée et la sédent
 Pour améliorer la compréhension, il serait utile d’intégrer d’autres facteurs biologiques (hormones régulatrices, état psychologique) et environnementaux, ainsi que d’explorer des modèles plus complexes.
 
 Ces résultats encouragent à promouvoir l’activité physique et à limiter la sédentarité comme leviers simples pour soutenir la testostérone naturellement.
+
 
 ### Mdolèle 2 (MCO) modèle physiologique de l'effet des indicateurs biologiques sur les niveaux de testostérone.
 ```{r, echo = FALSE, warning=FALSE, message = FALSE}
@@ -551,6 +578,8 @@ Enfin, les associations négatives avec l’âge et le tour de taille confirment
 
 Mettre en place un modèle logistique permet d’évaluer la probabilité d’hypogonadisme (état clinique défini par un seuil critique de testostérone), plutôt que de se limiter à l’analyse continue de la testostérone totale. Cela facilite l’identification des facteurs de risque cliniquement pertinents et l’aide à la prise de décision médicale.
 
+## Modèle logistique
+
 ### Interprétation du modèle logistique sur l’hypogonadisme
 ```{r, echo = FALSE, warning=FALSE, message = FALSE}
 
@@ -623,6 +652,6 @@ Cela signifie que le modèle a une bonne capacité discriminante.
 **🧠 Conclusion: ** Le modèle discrimine correctement les individus à risque et peut être utilisé, mmême si l'ajustement est à améliorer pour mieux prédire les probas extactes.
 
 
-### 🧾 Conclusion générale:
+# 🧾 Conclusion générale:
 
 Cette étude met en évidence plusieurs facteurs significativement associés aux niveaux de testostérone totale chez les hommes, en particulier l’âge, la SHBG et le tour de taille. Les résultats confirment des liens déjà établis dans la littérature entre mode de vie, métabolisme et équilibre hormonal. Malgré un pouvoir explicatif limité du modèle linéaire, le modèle logistique présente de bonnes performances discriminantes (AUC = 0.84). Ces analyses pourraient contribuer à mieux cibler les populations à risque d’hypogonadisme dans une perspective de santé publique.
